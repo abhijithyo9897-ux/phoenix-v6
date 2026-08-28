@@ -1,606 +1,556 @@
-import React, { useState, useEffect } from 'react';
-import { PaninianCompiler, CARD_TYPES } from '../engine/PaninianCompiler';
-import { VitruvianGeometry } from '../engine/VitruvianGeometry';
-import { SaptabhaginiLedger } from '../engine/SaptabhaginiLedger';
+import React, { useState } from 'react';
+import OmniBoard3D from './OmniBoard3D';
+import CryptexBox from './HardwareSimulators/CryptexBox';
 import { soundFx } from './SoundController';
 import { 
-  ShieldAlert, 
-  Play, 
-  Zap, 
-  AlertTriangle, 
-  RotateCcw, 
-  Layers, 
-  CheckCircle2, 
-  User, 
   Flame, 
-  VolumeX, 
+  Shield, 
+  Zap, 
+  Activity, 
+  Target, 
+  Layers, 
+  RotateCcw, 
+  Play, 
+  Settings, 
+  Award,
+  Radio,
+  Sun,
+  Mountain,
+  Crosshair,
   Sparkles,
-  Lock,
-  Unlock,
-  Shield,
-  ArrowRight
+  Heart,
+  Anchor,
+  HelpCircle,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
-const paninian = new PaninianCompiler();
-const vitruvian = new VitruvianGeometry();
-const saptabhagini = new SaptabhaginiLedger();
-
 export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
-  const [activeSector, setActiveSector] = useState(1); // 1: Tamisram, 2: Rauravam, 3: Kumbhipakam, 4: Asipattravana
-  const [players, setPlayers] = useState(saptabhagini.createInitialPlayers());
-  const [turn, setTurn] = useState(1);
-  const [activePlayerIdx, setActivePlayerIdx] = useState(0);
+  // Game Cycle State matching reference UI (Turn 14: Cycle 3)
+  const [turn, setTurn] = useState(14);
+  const [cycle, setCycle] = useState(3);
+  const [activePhase, setActivePhase] = useState('ACTIONS'); // DEPLOY, ACTIONS, PHASE, END_TURN
 
-  // Neural Buffer Hand & Selected Cards
-  const [hand, setHand] = useState(paninian.generateStarterHand('Strategist'));
-  const [selectedCards, setSelectedCards] = useState([]);
-  const [compileOutput, setCompileOutput] = useState(null);
+  // Hero Stats State matching reference UI
+  const [heroStats, setHeroStats] = useState({
+    name: 'PHOENIX RISING',
+    status: 110,
+    vitality: 72,
+    resource: 50,
+    anchor: 50,
+    kinetic: 72,
+    arcane: 95,
+    level: 12
+  });
 
-  // Polyomino Runway & Grid State
-  const [runway, setRunway] = useState(vitruvian.getRunway(5));
-  const [grid, setGrid] = useState(Array.from({ length: 6 }, () => Array(8).fill(0)));
-  const [bridgeProgress, setBridgeProgress] = useState(2); // out of 12
+  // Selected Card from Holographic 7-Force Card Hand
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [activeAbility, setActiveAbility] = useState(null);
+  const [actionLog, setActionLog] = useState('TURN 14 STARTED: ACTIONS PHASE ACTIVE');
 
-  // Moksha Protocol State
-  const [mokshaState, setMokshaState] = useState(null);
-  const [auditLogs, setAuditLogs] = useState(saptabhagini.auditTrail);
-
-  const activePlayer = players[activePlayerIdx];
-
-  // Naraka Sectors Data
-  const sectors = [
-    { id: 1, name: 'Tamisram', theme: 'Darkness', rule: 'Hidden Info & CSP', color: 'border-indigo-500/50 bg-indigo-950/20' },
-    { id: 2, name: 'Rauravam', theme: 'Silence', rule: 'Silent Spatial Packing', color: 'border-cyan-500/50 bg-cyan-950/20' },
-    { id: 3, name: 'Kumbhipakam', theme: 'Thermal Cascade', rule: 'Risk/Reward & God Channel', color: 'border-orange-500/50 bg-orange-950/20' },
-    { id: 4, name: 'Asipattravana', theme: '4D Portal Bleed', rule: 'Chess Search & Sacrifice', color: 'border-rose-500/50 bg-rose-950/20' }
+  // Holographic 7-Force Card Hand Data (Matching exact screenshot cards)
+  const HOLOGRAPHIC_CARDS = [
+    {
+      id: 'phanta',
+      name: 'PHANTA',
+      icon: '🔥',
+      color: 'border-amber-500/80 bg-amber-950/30 text-amber-400',
+      glow: 'shadow-amber-500/30',
+      costEnergy: 35,
+      costWater: 19,
+      desc: 'Synergistic fire strike dealing 35 Kinetic & 19 Arcane damage to target unit.'
+    },
+    {
+      id: 'aether',
+      name: 'AETHER',
+      icon: '⚛️',
+      color: 'border-cyan-400/80 bg-cyan-950/30 text-cyan-300',
+      glow: 'shadow-cyan-400/30',
+      costEnergy: 28,
+      costWater: 15,
+      desc: 'Phases spatial grid field to shield unit for 28 AP and restore 15 Vitality.'
+    },
+    {
+      id: 'dynamo',
+      name: 'DYNAMO',
+      icon: '⚡',
+      color: 'border-purple-500/80 bg-purple-950/30 text-purple-300',
+      glow: 'shadow-purple-500/30',
+      costEnergy: 23,
+      costWater: 19,
+      desc: 'Overcharges kinetic grid energy, dealing 23 chain damage to adjacent hexes.'
+    },
+    {
+      id: 'valor',
+      name: 'VALOR',
+      icon: '🛡️',
+      color: 'border-yellow-500/80 bg-yellow-950/30 text-yellow-300',
+      glow: 'shadow-yellow-500/30',
+      costEnergy: 23,
+      costWater: 15,
+      desc: 'Amplifies squad attack power by +23% and fortifies anchor defenses.'
+    },
+    {
+      id: 'echo',
+      name: 'ECHO',
+      icon: '🔊',
+      color: 'border-teal-400/80 bg-teal-950/30 text-teal-300',
+      glow: 'shadow-teal-400/30',
+      costEnergy: 23,
+      costWater: 15,
+      desc: 'Emits sonic harmonic frequency, copying previous card action effect.'
+    },
+    {
+      id: 'gravity',
+      name: 'GRAVITY',
+      icon: '🌀',
+      color: 'border-fuchsia-500/80 bg-fuchsia-950/30 text-fuchsia-300',
+      glow: 'shadow-fuchsia-500/30',
+      costEnergy: 29,
+      costWater: 15,
+      desc: 'Generates localized gravitational singularity pulling target 2 hexes closer.'
+    },
+    {
+      id: 'quantum',
+      name: 'QUANTUM',
+      icon: '🌌',
+      color: 'border-blue-500/80 bg-blue-950/30 text-blue-300',
+      glow: 'shadow-blue-500/30',
+      costEnergy: 26,
+      costWater: 15,
+      desc: 'Initiates quantum superposition, allowing unit to bypass terrain barriers.'
+    }
   ];
 
-  // Toggle card selection in Neural Buffer
+  // Abilities List (Row 1 Hexagons & Row 2 Squares)
+  const HEX_ABILITIES = [
+    { id: 'ab1', name: 'Aegis Shield', icon: Shield, color: 'text-amber-400 border-amber-500/50 bg-amber-950/40' },
+    { id: 'ab2', name: 'Pulse Wave', icon: Activity, color: 'text-cyan-400 border-cyan-500/50 bg-cyan-950/40' },
+    { id: 'ab3', name: 'Arcane Flare', icon: Sparkles, color: 'text-purple-400 border-purple-500/50 bg-purple-950/40' },
+    { id: 'ab4', name: 'Kinetic Blast', icon: Zap, color: 'text-fuchsia-400 border-fuchsia-500/50 bg-fuchsia-950/40' },
+    { id: 'ab5', name: 'Solar Crest', icon: Sun, color: 'text-yellow-400 border-yellow-500/50 bg-yellow-950/40' },
+    { id: 'ab6', name: 'Slash Vector', icon: Flame, color: 'text-rose-400 border-rose-500/50 bg-rose-950/40' }
+  ];
+
+  const SQUARE_ABILITIES = [
+    { id: 'sq1', name: 'Sun Core', icon: Sun },
+    { id: 'sq2', name: 'Mountain Guard', icon: Mountain },
+    { id: 'sq3', name: 'Fist Strike', icon: Target },
+    { id: 'sq4', name: 'Grid Radar', icon: Radio },
+    { id: 'sq5', name: 'Crosshair Aim', icon: Crosshair }
+  ];
+
+  // Handle Card Play Execution
   const handleCardClick = (card) => {
     if (soundEnabled) soundFx.playClick();
-    if (selectedCards.some(c => c.id === card.id)) {
-      setSelectedCards(selectedCards.filter(c => c.id !== card.id));
+
+    if (selectedCard?.id === card.id) {
+      setSelectedCard(null);
+      setActionLog('CARD DESELECTED');
     } else {
-      if (card.type === CARD_TYPES.CUT) {
-        // Cut card selected solo
-        setSelectedCards([card]);
-      } else {
-        setSelectedCards([...selectedCards.filter(c => c.type !== CARD_TYPES.CUT), card]);
-      }
+      setSelectedCard(card);
+      setActionLog(`SELECTED CARD: [${card.name}] - SELECT TARGET ON OMNI-BOARD`);
     }
   };
 
-  // Execute Pāṇinian Compilation
-  const handleCompile = () => {
-    const result = paninian.validateSyntax(selectedCards);
-
-    if (result.valid) {
+  // Handle Tile Selection on 3D Omni-Board
+  const handleTileSelect = (tile) => {
+    if (selectedCard) {
       if (soundEnabled) soundFx.playCompileSuccess();
 
-      if (result.syntax === 'CUT') {
-        // Execute The Cut -> Reset tension
-        const updatedPlayer = saptabhagini.executeCut(activePlayer);
-        updatePlayerInList(updatedPlayer);
-        setCompileOutput({ success: true, text: 'THE CUT EXECUTED: Tension reset to 1.' });
-      } else {
-        // Successful Pāṇinian compile -> Advance bridge & award credits
-        const updatedPlayer = {
-          ...activePlayer,
-          wallet: activePlayer.wallet + 30,
-          bridgeProgress: activePlayer.bridgeProgress + 1
-        };
-        updatePlayerInList(updatedPlayer);
-        setBridgeProgress(prev => Math.min(12, prev + 1));
-        setCompileOutput({ success: true, text: `SYNTAX COMPILED: [${result.effect}]. +30 Credits & Bridge Advance +1!` });
+      setActionLog(`EXECUTED [${selectedCard.name}] ON TILE (${tile.x}, ${tile.y}). CONSUMED ${selectedCard.costEnergy}⚡`);
+      
+      // Update Hero Resources
+      setHeroStats(prev => ({
+        ...prev,
+        resource: Math.max(0, prev.resource - 5),
+        vitality: Math.min(100, prev.vitality + 2)
+      }));
 
-        // Push interrupt to LIFO stack visualizer
-        paninian.pushInterrupt({ player: activePlayer.name, syntax: result.effect });
+      setSelectedCard(null);
 
-        // Trigger objective check if LIFO interrupt compiled
-        if (onObjectiveComplete) onObjectiveComplete('obj-paninian-lifo-combo');
-      }
-
-      // Remove played cards and draw replacements
-      const remainingHand = hand.filter(h => !selectedCards.some(s => s.id === h.id));
-      setHand([...remainingHand, ...paninian.generateStarterHand(activePlayer.role).slice(0, selectedCards.length)]);
-      setSelectedCards([]);
-    } else {
-      if (soundEnabled) soundFx.playTensionAlert();
-      // Syntax compilation failure -> +1 Tension
-      const updatedPlayer = saptabhagini.updateTension(activePlayer, 1);
-      updatePlayerInList(updatedPlayer);
-      setCompileOutput({ success: false, text: `COMPILATION FAILURE: ${result.reason}. Tension +1!` });
+      if (onObjectiveComplete) onObjectiveComplete('obj-paninian-lifo-combo');
     }
-
-    setAuditLogs([...saptabhagini.auditTrail]);
   };
 
-  // Advance to next player turn and process 15-credit Comfort Tax drain
+  // Handle End Turn
   const handleEndTurn = () => {
     if (soundEnabled) soundFx.playClick();
 
-    // Process Comfort Tax turn drain
-    const updatedPlayers = saptabhagini.processTurnDrain(players, turn);
-    setPlayers(updatedPlayers);
-
-    // Rotate player
-    const nextIdx = (activePlayerIdx + 1) % 4;
-    setActivePlayerIdx(nextIdx);
-
-    if (nextIdx === 0) {
+    if (cycle >= 4) {
       setTurn(prev => prev + 1);
-      // Auto-advance Naraka Sector round every 3 turns
-      if (turn % 3 === 0) {
-        setActiveSector(prev => Math.min(4, prev + 1));
-      }
+      setCycle(1);
+    } else {
+      setCycle(prev => prev + 1);
     }
 
-    setCompileOutput(null);
-    setSelectedCards([]);
-    setAuditLogs([...saptabhagini.auditTrail]);
-  };
-
-  // Place Polyomino Piece onto Bridge Grid
-  const handlePlacePiece = (pieceIdx) => {
-    const piece = runway[pieceIdx];
-    if (!piece) return;
-
-    // Find first available cell on grid
-    let placed = false;
-    const newGrid = grid.map(row => [...row]);
-
-    for (let r = 0; r < newGrid.length; r++) {
-      for (let c = 0; c < newGrid[0].length; c++) {
-        if (vitruvian.canPlace(newGrid, piece.shape, r, c)) {
-          const updatedGrid = vitruvian.placeOnGrid(newGrid, piece.shape, r, c, 1);
-          setGrid(updatedGrid);
-          placed = true;
-          break;
-        }
-      }
-      if (placed) break;
-    }
-
-    if (placed) {
-      if (soundEnabled) soundFx.playClick();
-      vitruvian.drawPiece();
-      setRunway(vitruvian.getRunway(5));
-      setBridgeProgress(prev => Math.min(12, prev + 1));
-
-      const updatedPlayer = {
-        ...activePlayer,
-        bridgeProgress: activePlayer.bridgeProgress + 1
-      };
-      updatePlayerInList(updatedPlayer);
-    }
-  };
-
-  // Execute Voluntary Point Lead Sacrifice for Moksha Protocol Victory
-  const handleVoluntarySacrifice = () => {
-    // Set active player wallet to 0 (voluntary sacrifice)
-    const sacrificedPlayers = players.map((p, idx) => 
-      idx === activePlayerIdx ? { ...p, wallet: 0, debt: 0 } : { ...p, debt: 0 }
-    );
-    setPlayers(sacrificedPlayers);
-
-    const result = saptabhagini.checkMokshaProtocol(sacrificedPlayers, 12);
-    setMokshaState(result);
-
-    if (result.unlocked) {
-      if (soundEnabled) soundFx.playVictoryChime();
-      if (onObjectiveComplete) onObjectiveComplete('obj-collective-moksha');
-    }
-  };
-
-  const updatePlayerInList = (updatedPlayer) => {
-    setPlayers(players.map(p => p.id === updatedPlayer.id ? updatedPlayer : p));
+    setActionLog(`TURN ${turn} CYCLE ${cycle}: TURN ENDED. RECHARGED +15 RESOURCE.`);
+    setHeroStats(prev => ({ ...prev, resource: Math.min(100, prev.resource + 15) }));
   };
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="flex flex-col gap-4 text-slate-100 font-sans pb-10">
       
-      {/* Top Sector & Telemetry Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
+      {/* ==================== TOP SYSTEM HEADER HUD ==================== */}
+      <header className="flex flex-wrap items-center justify-between bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-2xl border border-amber-500/30 shadow-xl shadow-amber-950/20">
         
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        {/* Left: Phoenix Sovereign Reality Logo & Sub-Nav */}
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
-              <ShieldAlert className="w-6 h-6 animate-pulse" />
+            <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 shadow-lg shadow-amber-500/30 text-slate-950">
+              <Flame className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <h1 className="font-orbitron font-extrabold text-2xl text-slate-100 flex items-center gap-2">
-                <span>Phoenix: Arena Core</span>
-                <span className="text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-md">
-                  G01 FLAGSHIP
-                </span>
-              </h1>
-              <p className="text-xs text-slate-400">4-Player Asymmetric Naraka Survival & Collective Moksha Protocol</p>
+              <h1 className="text-lg font-black tracking-wider text-amber-400 font-mono">PHOENIX</h1>
+              <p className="text-[10px] tracking-widest text-slate-400 font-mono uppercase">Sovereign Reality</p>
             </div>
           </div>
 
-          {/* Turn & Round Telemetry */}
-          <div className="flex items-center gap-4 bg-slate-950 px-4 py-2 rounded-2xl border border-slate-800 font-mono text-xs">
-            <div>
-              <span className="text-slate-400">TURN:</span>
-              <span className="text-amber-400 font-bold ml-1.5">{turn}</span>
-            </div>
-            <div className="h-4 w-[1px] bg-slate-800"></div>
-            <div>
-              <span className="text-slate-400">SECTOR:</span>
-              <span className="text-cyan-400 font-bold ml-1.5">{activeSector} / 4</span>
-            </div>
-            <div className="h-4 w-[1px] bg-slate-800"></div>
-            <div>
-              <span className="text-slate-400">ACTIVE:</span>
-              <span className="text-slate-100 font-bold ml-1.5">{activePlayer.name} ({activePlayer.role})</span>
+          {/* Hex Sub-Nav Icons */}
+          <div className="hidden sm:flex items-center gap-1.5 ml-4 pl-4 border-l border-slate-800">
+            {['hex1', 'hex2', 'hex3', 'hex4', 'hex5'].map((h, i) => (
+              <button key={h} className="w-7 h-7 rounded-lg bg-slate-800/80 hover:bg-amber-500/20 border border-slate-700 hover:border-amber-500/50 flex items-center justify-center text-xs text-slate-400 hover:text-amber-300 transition-all">
+                ❖
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Center: Turn & Cycle Counter with Hex Status Nodes */}
+        <div className="flex items-center gap-4 bg-slate-950/80 px-5 py-2 rounded-xl border border-amber-500/40">
+          <div className="text-center">
+            <span className="text-[11px] font-mono text-slate-400 tracking-widest block">TURN 14: CYCLE {cycle}</span>
+            <div className="flex items-center justify-center gap-2 mt-1">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+              <div className="flex items-center gap-1.5 text-xs text-amber-300 font-mono font-bold">
+                <Settings className="w-3.5 h-3.5" />
+                <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="text-amber-400 font-serif font-black px-1 border border-amber-500/50 rounded">H</span>
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 4 Naraka Sector Round Tracker */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {sectors.map(sec => {
-            const isActive = activeSector === sec.id;
-            return (
-              <div
-                key={sec.id}
-                onClick={() => setActiveSector(sec.id)}
-                className={`cursor-pointer p-3.5 rounded-2xl border transition-all ${
-                  isActive 
-                    ? `${sec.color} shadow-lg shadow-amber-500/10 border-amber-500/60 ring-1 ring-amber-500/40`
-                    : 'bg-slate-950/60 border-slate-800 opacity-60 hover:opacity-100'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs font-mono font-bold">
-                  <span className={isActive ? 'text-amber-400' : 'text-slate-400'}>ROUND {sec.id}</span>
-                  <span className="text-[10px] text-slate-400 uppercase">{sec.theme}</span>
-                </div>
-                <div className="font-orbitron font-bold text-sm text-slate-100 mt-1">{sec.name}</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">{sec.rule}</div>
-              </div>
-            );
-          })}
-        </div>
-
-      </div>
-
-      {/* Players HUD Bar (4 Roles) */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {players.map((p, idx) => {
-          const isTurn = idx === activePlayerIdx;
-          const tensionAlert = p.tension >= 8;
-          return (
-            <div
-              key={p.id}
-              onClick={() => setActivePlayerIdx(idx)}
-              className={`cursor-pointer p-4 rounded-2xl border transition-all space-y-3 ${
-                isTurn
-                  ? 'bg-slate-900 border-amber-500/80 shadow-xl shadow-amber-500/10 ring-1 ring-amber-500/50'
-                  : 'bg-slate-950/80 border-slate-800/80 opacity-75 hover:opacity-100'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <User className={`w-4 h-4 ${isTurn ? 'text-amber-400' : 'text-slate-400'}`} />
-                  <div>
-                    <div className="font-orbitron font-bold text-sm text-slate-100">{p.name}</div>
-                    <div className="text-[10px] font-mono text-slate-400">{p.role}</div>
-                  </div>
-                </div>
-                {p.neckbandLocked ? (
-                  <span className="p-1 rounded bg-rose-950 text-rose-400 border border-rose-800" title="Neck-Band Locked">
-                    <Lock className="w-3.5 h-3.5" />
-                  </span>
-                ) : (
-                  <span className="p-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-800" title="Neck-Band Unlatched">
-                    <Unlock className="w-3.5 h-3.5" />
-                  </span>
-                )}
-              </div>
-
-              {/* Wallet Drain Bar */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-400">BLEED WALLET:</span>
-                  <span className={`font-bold ${p.wallet < 30 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`}>
-                    {p.wallet} CR
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
-                  <div 
-                    className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(100, p.wallet)}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Tension Meter (1-10) */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-400">TENSION METER:</span>
-                  <span className={`font-bold ${tensionAlert ? 'text-rose-400 animate-bounce' : 'text-cyan-400'}`}>
-                    {p.tension} / 10
-                  </span>
-                </div>
-                <div className="grid grid-cols-10 gap-0.5">
-                  {Array.from({ length: 10 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`h-2 rounded-sm ${
-                        i < p.tension 
-                          ? i >= 7 ? 'bg-rose-500' : 'bg-cyan-400' 
-                          : 'bg-slate-900 border border-slate-800'
-                      }`}
-                    ></div>
-                  ))}
-                </div>
-              </div>
-
+        {/* Right: Phoenix 1 Hero Status Bar */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 bg-slate-950/90 px-4 py-2 rounded-xl border border-slate-800 text-xs font-mono">
+            <div className="flex items-center gap-1 text-amber-400">
+              <span className="font-bold">PHOENIX 1</span>
             </div>
-          );
-        })}
-      </div>
+            <div className="flex items-center gap-1.5 text-rose-400 border-l border-slate-800 pl-3">
+              <Heart className="w-3.5 h-3.5 fill-rose-500/30" />
+              <span>STATUS</span>
+              <span className="font-bold text-slate-100">{heroStats.status}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-emerald-400 border-l border-slate-800 pl-3">
+              <Heart className="w-3.5 h-3.5 fill-emerald-500/30" />
+              <span>VITALITY</span>
+              <span className="font-bold text-slate-100">{heroStats.vitality}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-cyan-400 border-l border-slate-800 pl-3">
+              <Zap className="w-3.5 h-3.5" />
+              <span>RESOURCE</span>
+              <span className="font-bold text-slate-100">{heroStats.resource}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-purple-400 border-l border-slate-800 pl-3">
+              <Anchor className="w-3.5 h-3.5" />
+              <span className="font-bold text-slate-100">{heroStats.anchor}</span>
+            </div>
+          </div>
+        </div>
+      </header>
 
-      {/* Main Playable Core Interface */}
-      <div className="grid lg:grid-cols-3 gap-8">
+      {/* ==================== MAIN WORKSPACE (LEFT HUD + CENTER 3D OMNI-BOARD) ==================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* Left Column: Pāṇinian Neural Buffer Compiler (2 cols) */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* ==================== LEFT COLUMN (HERO ATTRIBUTES HUD & CRYPTEX) ==================== */}
+        <div className="lg:col-span-3 flex flex-col gap-4">
           
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 shadow-xl">
-            <div className="flex items-center justify-between">
+          {/* HERO ATTRIBUTES HUD PANEL */}
+          <div className="bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-amber-500/30 shadow-lg flex flex-col gap-3">
+            
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h2 className="text-xs font-mono font-bold tracking-widest text-amber-400 uppercase">HERO ATTRIBUTES</h2>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">HUD</span>
+            </div>
+
+            <div className="text-sm font-bold text-slate-100 font-mono tracking-wider">
+              {heroStats.name}
+            </div>
+
+            {/* Numeric Bars: Vitality, Kinetic, Arcane, Level */}
+            <div className="flex flex-col gap-2 font-mono text-xs">
+              
+              {/* Vitality (88) */}
               <div>
-                <h2 className="font-orbitron font-bold text-lg text-slate-100 flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-amber-400" />
-                  <span>Pāṇinian Syntax Compiler</span>
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Syntax: <strong className="text-amber-300">[Modifier] + [Action] + [Target]</strong> or play <strong className="text-cyan-300">The Cut</strong> to reset tension.
-                </p>
+                <div className="flex justify-between text-[11px] mb-1 text-amber-300">
+                  <span>VITALITY</span>
+                  <span className="font-bold">88</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-amber-500/30">
+                  <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full" style={{ width: '88%' }}></div>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCompile}
-                  disabled={selectedCards.length === 0}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 disabled:opacity-40 hover:scale-105 transition-transform"
-                >
-                  COMPILE PROGRAM
-                </button>
-                <button
-                  onClick={handleEndTurn}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold hover:bg-slate-700 transition-colors"
-                >
-                  END TURN (-15 CR)
-                </button>
+              {/* Kinetic (72) */}
+              <div>
+                <div className="flex justify-between text-[11px] mb-1 text-cyan-300">
+                  <span>KINETIC</span>
+                  <span className="font-bold">72</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-cyan-500/30">
+                  <div className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full" style={{ width: '72%' }}></div>
+                </div>
+              </div>
+
+              {/* Arcane (95) */}
+              <div>
+                <div className="flex justify-between text-[11px] mb-1 text-purple-300">
+                  <span>ARCANE</span>
+                  <span className="font-bold">95</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-purple-500/30">
+                  <div className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-400 rounded-full" style={{ width: '95%' }}></div>
+                </div>
+              </div>
+
+              {/* Level (12) */}
+              <div>
+                <div className="flex justify-between text-[11px] mb-1 text-sky-300">
+                  <span>LEVEL</span>
+                  <span className="font-bold">12</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-sky-500/30">
+                  <div className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-full" style={{ width: '60%' }}></div>
+                </div>
               </div>
             </div>
 
-            {/* Neural Buffer Hand (9 Slots) */}
-            <div className="space-y-3">
-              <div className="text-xs font-mono text-slate-400 flex items-center justify-between">
-                <span>NEURAL BUFFER HAND (9 CARDS)</span>
-                <span>SELECTED: {selectedCards.length} / 3 CARDS</span>
+            {/* Abilities Section */}
+            <div className="mt-2 pt-2 border-t border-slate-800">
+              <span className="text-[10px] font-mono text-slate-400 tracking-widest uppercase block mb-2">ABILITIES</span>
+              
+              {/* Row 1: 6 Hexagonal Ability Buttons */}
+              <div className="grid grid-cols-6 gap-1 mb-2">
+                {HEX_ABILITIES.map((ab) => {
+                  const Icon = ab.icon;
+                  const isActive = activeAbility === ab.id;
+                  return (
+                    <button
+                      key={ab.id}
+                      onClick={() => {
+                        if (soundEnabled) soundFx.playClick();
+                        setActiveAbility(ab.id);
+                      }}
+                      className={`p-1.5 rounded-lg border flex items-center justify-center transition-all ${ab.color} ${isActive ? 'ring-2 ring-amber-400 scale-105' : 'hover:scale-105'}`}
+                      title={ab.name}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-9 gap-2">
-                {hand.map((card) => {
-                  const isSelected = selectedCards.some(c => c.id === card.id);
-                  let typeColor = 'border-purple-500/40 bg-purple-950/30 text-purple-300';
-                  if (card.type === CARD_TYPES.ACTION) typeColor = 'border-amber-500/40 bg-amber-950/30 text-amber-300';
-                  if (card.type === CARD_TYPES.TARGET) typeColor = 'border-cyan-500/40 bg-cyan-950/30 text-cyan-300';
-                  if (card.type === CARD_TYPES.CUT) typeColor = 'border-rose-500/40 bg-rose-950/30 text-rose-300';
-
+              {/* Row 2: 5 Square Ability Icons */}
+              <div className="grid grid-cols-5 gap-1">
+                {SQUARE_ABILITIES.map((sq) => {
+                  const Icon = sq.icon;
                   return (
-                    <div
-                      key={card.id}
-                      onClick={() => handleCardClick(card)}
-                      className={`cursor-pointer p-2.5 rounded-xl border flex flex-col justify-between h-24 transition-all ${typeColor} ${
-                        isSelected ? 'ring-2 ring-amber-400 scale-105 shadow-lg shadow-amber-500/20' : 'hover:scale-102 opacity-85 hover:opacity-100'
-                      }`}
+                    <button
+                      key={sq.id}
+                      onClick={() => {
+                        if (soundEnabled) soundFx.playClick();
+                      }}
+                      className="p-1.5 rounded-lg bg-slate-800/80 border border-slate-700 hover:border-amber-500/50 hover:bg-amber-500/20 text-slate-400 hover:text-amber-300 flex items-center justify-center transition-all"
+                      title={sq.name}
                     >
-                      <div className="text-[9px] font-mono font-bold uppercase">{card.type}</div>
-                      <div className="font-orbitron font-bold text-xs leading-tight">{card.name}</div>
-                      <div className="text-[9px] font-mono text-slate-400">{card.role}</div>
-                    </div>
+                      <Icon className="w-3.5 h-3.5" />
+                    </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Special Sovereign Actions Panel (Lore Integrated) */}
-            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-              <div className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">SPECIAL SOVEREIGN TACTICAL ACTIONS</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <button
-                  onClick={() => {
-                    if (soundEnabled) soundFx.playClick();
-                    const updated = { ...activePlayer, tension: Math.max(1, activePlayer.tension - 2), wallet: activePlayer.wallet + 10 };
-                    updatePlayerInList(updated);
-                    setCompileOutput({ success: true, text: 'NATURAL WAY SMUDGING EXECUTED: Cleared cellular toxicity! Tension -2, Wallet +10 CR.' });
-                  }}
-                  className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/60 transition-colors text-left font-mono text-[11px]"
-                >
-                  <div className="font-bold">Natural Smudging</div>
-                  <div className="text-[9px] text-slate-400 mt-0.5">Tension -2 | +10 CR</div>
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (soundEnabled) soundFx.playClick();
-                    const updated = { ...activePlayer, wallet: activePlayer.wallet + 50, tension: Math.min(10, activePlayer.tension + 2) };
-                    updatePlayerInList(updated);
-                    setCompileOutput({ success: true, text: 'SCIENTIFIC NANITE STIM: Instant +50 CR gained, but tension increased +2!' });
-                  }}
-                  className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-900/60 transition-colors text-left font-mono text-[11px]"
-                >
-                  <div className="font-bold">Nanite Stim Inject</div>
-                  <div className="text-[9px] text-slate-400 mt-0.5">+50 CR | Tension +2</div>
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (soundEnabled) soundFx.playClick();
-                    const updated = { ...activePlayer, tension: Math.max(1, activePlayer.tension - 1) };
-                    updatePlayerInList(updated);
-                    setCompileOutput({ success: true, text: 'OPTICAL STEALTH SUIT: Refracted tracking lasers via Ghost Vertex!' });
-                  }}
-                  className="p-2.5 rounded-xl bg-purple-950/60 border border-purple-500/30 text-purple-300 hover:bg-purple-900/60 transition-colors text-left font-mono text-[11px]"
-                >
-                  <div className="font-bold">Optical Stealth</div>
-                  <div className="text-[9px] text-slate-400 mt-0.5">Ghost Vertex Refract</div>
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (soundEnabled) soundFx.playClick();
-                    setBridgeProgress(prev => Math.min(12, prev + 2));
-                    setCompileOutput({ success: true, text: 'LEAST NAME PROJECT SWARM: Cell swarmed lowest progress block! Bridge +2!' });
-                  }}
-                  className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/30 text-amber-300 hover:bg-amber-900/60 transition-colors text-left font-mono text-[11px]"
-                >
-                  <div className="font-bold">Least Name Swarm</div>
-                  <div className="text-[9px] text-slate-400 mt-0.5">Bridge Progress +2</div>
-                </button>
+            {/* Active Hero Portrait Card */}
+            <div className="mt-2 p-2.5 rounded-xl bg-slate-950/80 border border-amber-500/40 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-lg font-black text-slate-950 shadow-md">
+                🔥
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <div className="text-xs font-mono font-bold text-amber-300 truncate">PHOENIX RISING</div>
+                <div className="text-[9px] font-mono text-slate-500 truncate">TDOVROENIS RISING</div>
               </div>
             </div>
-
-            {/* Program Output Banner */}
-            {compileOutput && (
-              <div className={`p-4 rounded-2xl border text-xs font-mono font-semibold flex items-start gap-3 ${
-                compileOutput.success 
-                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' 
-                  : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
-              }`}>
-                {compileOutput.success ? <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> : <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />}
-                <div>
-                  <div className="font-bold text-sm">{compileOutput.success ? 'COMPILATION SUCCESS' : 'COMPILATION ERROR'}</div>
-                  <div>{compileOutput.text}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Vitruvian 7-Bag Polyomino Runway & Bridge Grid */}
-            <div className="space-y-4 pt-4 border-t border-slate-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-orbitron font-bold text-sm text-slate-100">Vitruvian Polyomino 7-Bag Runway</h3>
-                  <p className="text-xs text-slate-400">Draft polyomino blocks to construct the NB Island Bridge.</p>
-                </div>
-                <div className="text-xs font-mono text-cyan-400 font-bold bg-cyan-950/60 px-3 py-1 rounded-lg border border-cyan-800">
-                  BRIDGE PROGRESS: {bridgeProgress} / 12 NODES
-                </div>
-              </div>
-
-              {/* 5 Runway Face-Up Pieces */}
-              <div className="flex items-center gap-3 overflow-x-auto pb-2">
-                {runway.map((piece, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handlePlacePiece(idx)}
-                    className="p-3 rounded-2xl bg-slate-950 border border-slate-800 hover:border-amber-500 flex flex-col items-center gap-2 group transition-all"
-                  >
-                    <div className="text-[10px] font-mono text-amber-400 font-bold">{piece.name}</div>
-                    <div className="grid gap-0.5 p-1 bg-slate-900 rounded">
-                      {piece.shape.map((row, r) => (
-                        <div key={r} className="flex gap-0.5">
-                          {row.map((cell, c) => (
-                            <div
-                              key={c}
-                              className={`w-3.5 h-3.5 rounded-sm ${cell ? 'bg-cyan-400 shadow-sm shadow-cyan-400/40' : 'bg-transparent'}`}
-                            ></div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                    <span className="text-[10px] text-slate-400 group-hover:text-white">Place Block</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Interactive Bridge Grid Matrix */}
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
-                <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">NB Island Bridge Structural Grid</div>
-                <div className="grid gap-1 max-w-md mx-auto">
-                  {grid.map((row, r) => (
-                    <div key={r} className="flex justify-center gap-1">
-                      {row.map((cell, c) => (
-                        <div
-                          key={c}
-                          className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-colors ${
-                            cell ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 font-bold text-xs' : 'bg-slate-900/60 border-slate-800'
-                          }`}
-                        >
-                          {cell ? '⬡' : ''}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-
           </div>
 
+          {/* CRYPTEX HARDWARE BOX PREVIEW */}
+          <div className="bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-amber-500/30 shadow-lg flex flex-col gap-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h2 className="text-xs font-mono font-bold tracking-widest text-slate-300 uppercase">CRYPTEX HARDWARE</h2>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">PREVIEW</span>
+            </div>
+
+            {/* Embedded 3D Sci-Fi Box Preview */}
+            <div className="h-32 rounded-xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center relative">
+              <CryptexBox soundEnabled={soundEnabled} compact={true} />
+            </div>
+
+            {/* Status & Cycles Readouts */}
+            <div className="flex items-center justify-between text-xs font-mono px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800">
+              <span className="text-slate-400">STATUS: <strong className="text-emerald-400">ACTIVE</strong></span>
+              <span className="text-slate-400">CYCLES: <strong className="text-slate-200">142</strong></span>
+            </div>
+          </div>
         </div>
 
-        {/* Right Column: Saptabhagini Ledger & Moksha Victory Panel */}
-        <div className="space-y-6">
+        {/* ==================== CENTER COLUMN (3D OMNI-BOARD ARENA + PHASE BAR) ==================== */}
+        <div className="lg:col-span-9 flex flex-col gap-4">
           
-          {/* Voluntary Sacrifice / Moksha Control Box */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/40 rounded-3xl p-6 space-y-4 shadow-xl">
-            <div className="flex items-center gap-2 text-amber-400 font-orbitron font-bold text-base">
-              <Sparkles className="w-5 h-5" />
-              <span>Moksha Protocol Endgame</span>
-            </div>
-            
-            <p className="text-xs text-slate-300 leading-relaxed">
-              To trigger the Moksha Endgame, complete the NB Island bridge (12 nodes) and have the active point leader execute a <strong className="text-amber-300">Voluntary Point Lead Sacrifice</strong> to unlatch all neck-bands.
-            </p>
+          {/* Interactive 3D Omni-Board Canvas */}
+          <OmniBoard3D 
+            selectedCard={selectedCard}
+            onTileSelect={handleTileSelect}
+            activePhase={activePhase}
+            heroStats={heroStats}
+            onHeroStatsChange={setHeroStats}
+          />
 
+          {/* Action Log Status Bar */}
+          <div className="flex items-center justify-between bg-slate-900/80 px-4 py-2 rounded-xl border border-slate-800 text-xs font-mono">
+            <div className="flex items-center gap-2 text-cyan-400">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              <span className="font-bold truncate">{actionLog}</span>
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono">
+              COMMAND BUFFER: SYNCHRONIZED
+            </div>
+          </div>
+
+          {/* Phase Control Buttons Bar */}
+          <div className="flex items-center justify-center gap-3 bg-slate-900/90 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-xl">
+            
+            {/* Deploy Pill */}
             <button
-              onClick={handleVoluntarySacrifice}
-              className="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-cyan-500 text-slate-950 font-orbitron font-extrabold text-xs tracking-wider shadow-lg shadow-amber-500/20 hover:scale-[1.02] transition-transform"
+              onClick={() => {
+                if (soundEnabled) soundFx.playClick();
+                setActivePhase('DEPLOY');
+                setActionLog('PHASE CHANGED TO: DEPLOY UNITS');
+              }}
+              className={`px-6 py-2 rounded-xl font-mono text-xs font-bold tracking-widest transition-all ${
+                activePhase === 'DEPLOY' 
+                  ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/30' 
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
             >
-              EXECUTE VOLUNTARY SACRIFICE
+              DEPLOY
             </button>
 
-            {mokshaState && (
-              <div className={`p-4 rounded-2xl border text-xs font-mono space-y-2 ${
-                mokshaState.unlocked 
-                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300' 
-                  : 'bg-slate-950 border-slate-800 text-slate-300'
-              }`}>
-                <div className="font-bold text-sm font-orbitron">
-                  {mokshaState.unlocked ? '✨ MOKSHA ENDGAME ACHIEVED! ✨' : 'MOKSHA STATUS CHECK'}
-                </div>
-                <div>{mokshaState.reason || 'Sacrifice or bridge condition incomplete.'}</div>
-              </div>
-            )}
+            {/* Actions Pill (Active State) */}
+            <button
+              onClick={() => {
+                if (soundEnabled) soundFx.playClick();
+                setActivePhase('ACTIONS');
+                setActionLog('PHASE CHANGED TO: EXECUTE ACTIONS');
+              }}
+              className={`px-6 py-2 rounded-xl font-mono text-xs font-bold tracking-widest transition-all ${
+                activePhase === 'ACTIONS' 
+                  ? 'bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-400/40 ring-2 ring-cyan-300' 
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              ACTIONS
+            </button>
+
+            {/* Phase Pill */}
+            <button
+              onClick={() => {
+                if (soundEnabled) soundFx.playClick();
+                setActivePhase('PHASE');
+                setActionLog('PHASE CHANGED TO: RESOLVE FIELD PHASES');
+              }}
+              className={`px-6 py-2 rounded-xl font-mono text-xs font-bold tracking-widest transition-all ${
+                activePhase === 'PHASE' 
+                  ? 'bg-purple-500 text-slate-950 shadow-lg shadow-purple-500/30' 
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              PHASE
+            </button>
+
+            {/* End Turn Pill (Gold Accent) */}
+            <button
+              onClick={handleEndTurn}
+              className="px-6 py-2 rounded-xl font-mono text-xs font-bold tracking-widest bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/30 transition-all active:scale-95"
+            >
+              END TURN
+            </button>
           </div>
-
-          {/* Saptabhagini Audit Log Stream */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h3 className="font-orbitron font-bold text-sm text-slate-100">Saptabhagini Audit Trail</h3>
-              <span className="text-[10px] font-mono text-emerald-400">100% AUDITABLE</span>
-            </div>
-
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1 text-[11px] font-mono scrollbar-thin">
-              {auditLogs.map((log, idx) => (
-                <div key={idx} className="p-2 rounded-lg bg-slate-950 border border-slate-800/80 text-slate-300 space-y-0.5">
-                  <div className="text-[9px] text-slate-500">{new Date(log.timestamp).toLocaleTimeString()}</div>
-                  <div>{log.message}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
         </div>
-
       </div>
 
+      {/* ==================== BOTTOM DOCK: HOLOGRAPHIC 7-FORCE CARD HAND ==================== */}
+      <div className="bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-amber-500/40 shadow-2xl flex flex-col gap-3">
+        
+        {/* Header Title */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <h2 className="text-xs font-mono font-bold tracking-widest text-amber-400 uppercase">
+              HOLOGRAPHIC 7-FORCE CARD HAND
+            </h2>
+            <span className="text-[10px] font-mono text-slate-400">
+              ; CARDS: PHANTA, AETHER, ECHO, GRAVITY, QUANTUM
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-cyan-400">
+            {selectedCard ? `ACTIVE: [${selectedCard.name}]` : 'SELECT CARD TO CAST'}
+          </span>
+        </div>
+
+        {/* 7 Glowing Holographic Cards Deck */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          {HOLOGRAPHIC_CARDS.map((card) => {
+            const isSelected = selectedCard?.id === card.id;
+
+            return (
+              <div
+                key={card.id}
+                onClick={() => handleCardClick(card)}
+                className={`p-3 rounded-xl border flex flex-col justify-between h-44 cursor-pointer transition-all duration-300 relative group overflow-hidden ${card.color} ${
+                  isSelected 
+                    ? 'ring-2 ring-amber-400 scale-105 shadow-xl -translate-y-2' 
+                    : 'hover:scale-102 hover:-translate-y-1'
+                }`}
+              >
+                {/* Top Card Name & Icon */}
+                <div className="flex items-center justify-between border-b border-current/20 pb-1.5">
+                  <span className="text-xs font-mono font-black tracking-wider">{card.name}</span>
+                  <span className="text-base">{card.icon}</span>
+                </div>
+
+                {/* Card Emblem / Graphic Motif */}
+                <div className="my-auto text-center py-2">
+                  <div className="w-10 h-10 mx-auto rounded-full border border-current/30 flex items-center justify-center text-xl bg-slate-950/40 group-hover:scale-110 transition-transform">
+                    {card.icon}
+                  </div>
+                </div>
+
+                {/* Card Description */}
+                <p className="text-[9px] leading-tight font-sans text-slate-300/80 my-1 line-clamp-3">
+                  {card.desc}
+                </p>
+
+                {/* Card Costs (Energy ⚡ / Water 💧) */}
+                <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-current/20">
+                  <span className="font-bold">{card.costEnergy} ⚡</span>
+                  <span className="font-bold">{card.costWater} 💧</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
