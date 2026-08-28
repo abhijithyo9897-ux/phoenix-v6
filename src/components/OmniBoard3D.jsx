@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, Maximize2, Sparkles, Shield, Flame, Activity } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Sparkles, Shield, Flame, Activity } from 'lucide-react';
 
 export default function OmniBoard3D({ 
   selectedCard, 
@@ -16,14 +16,14 @@ export default function OmniBoard3D({
   const [selectedTile, setSelectedTile] = useState({ x: 7, y: 7 }); // G8 coordinate
   const [laserPulse, setLaserPulse] = useState(0);
 
-  // Dynamic Camera Controls (Zoom & Pitch Offset)
+  // Dynamic Camera Controls (Zoom & Camera Offset)
   const [zoomLevel, setZoomLevel] = useState(1.0);
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
 
-  // Floating Combat Damage Popups List
+  // Floating Combat Popups
   const [popups, setPopups] = useState([]);
 
-  // 15x15 Grid setup (A1..O15)
+  // 15x15 Grid setup (A1..O15) matching reference screenshot
   const COLS = ['A1', 'A2', 'A3', 'D4', 'D6', 'G7', 'G8', 'G9', 'O10', 'O12', 'O13', 'O14', 'O15'];
   const ROWS = ['A15', 'O12', 'O8', 'O4', 'O5', 'O6', 'O7', 'O8', 'O9', 'O10', 'O12', 'O13', 'O14', 'O15'];
   const GRID_SIZE = 15;
@@ -60,7 +60,7 @@ export default function OmniBoard3D({
       id: 'void1', 
       name: 'VOID REAPER', 
       gx: 11, 
-      gy: 3, // O4/O10
+      gy: 3, // O4
       color: '#a855f7', 
       accent: '#e879f9', 
       hp: 110, 
@@ -99,7 +99,7 @@ export default function OmniBoard3D({
 
   const activeUnits = externalUnits || internalUnits;
 
-  // Terrain elements map (Mountains, Coniferous Forests, Power Relays)
+  // Terrain elements map matching attached screenshot mountains, forests, energy pylons
   const terrainMap = useRef({
     '3,2': 'mountain', '3,3': 'mountain', '4,2': 'mountain', '4,3': 'mountain',
     '11,1': 'mountain', '12,1': 'mountain', '12,2': 'mountain', '13,2': 'mountain',
@@ -109,7 +109,7 @@ export default function OmniBoard3D({
     '6,6': 'relay', '8,8': 'relay'
   });
 
-  // Trigger Floating Combat Popups on floatingFx changes
+  // Trigger Floating Combat Popups
   useEffect(() => {
     if (floatingFx) {
       const targetUnit = activeUnits.find(u => u.id === floatingFx.target) || activeUnits[0];
@@ -133,7 +133,7 @@ export default function OmniBoard3D({
     return () => clearInterval(timer);
   }, []);
 
-  // Handle laser beam energy animation pulse
+  // Laser pulse animation
   useEffect(() => {
     const timer = setInterval(() => {
       setLaserPulse(prev => (prev + 1) % 100);
@@ -152,27 +152,39 @@ export default function OmniBoard3D({
       const width = canvas.width;
       const height = canvas.height;
 
-      // Clear Canvas with sleek cosmic ambient background
-      ctx.fillStyle = '#070a14';
+      // Deep dark cosmic ambient background
+      ctx.fillStyle = '#060913';
       ctx.fillRect(0, 0, width, height);
 
-      // Draw subtle grid noise & star particles in background
       drawCosmicBackground(ctx, width, height);
 
-      // Isometric Transformation Constants with Zoom & Camera Offset
+      // Isometric Transformation Constants
       const tileW = 46 * zoomLevel;
       const tileH = 24 * zoomLevel;
       const originX = width / 2 + cameraOffset.x;
       const originY = height * 0.22 + cameraOffset.y;
 
-      // Convert Grid (gx, gy) to 3D Isometric Screen (sx, sy)
       const gridToIso = (gx, gy, elevation = 0) => {
         const isoX = originX + (gx - gy) * (tileW / 2);
         const isoY = originY + (gx + gy) * (tileH / 2) - elevation * zoomLevel;
         return { x: isoX, y: isoY };
       };
 
-      // 1. Draw Base Board Hexagonal/Isometric Grid Mesh
+      // 1. Draw Ground Light Pools under glowing unit bases
+      activeUnits.forEach(unit => {
+        const pt = gridToIso(unit.gx, unit.gy);
+        const grad = ctx.createRadialGradient(pt.x, pt.y, 2, pt.x, pt.y, 45 * zoomLevel);
+        grad.addColorStop(0, unit.color + '60');
+        grad.addColorStop(0.5, unit.color + '20');
+        grad.addColorStop(1, 'transparent');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(pt.x, pt.y, 45 * zoomLevel, 24 * zoomLevel, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // 2. Draw 15x15 Isometric Hex Mesh Grid
       for (let gy = 0; gy < GRID_SIZE; gy++) {
         for (let gx = 0; gx < GRID_SIZE; gx++) {
           const pt = gridToIso(gx, gy);
@@ -181,42 +193,39 @@ export default function OmniBoard3D({
           const terrainKey = `${gx},${gy}`;
           const terrain = terrainMap.current[terrainKey];
 
-          // Determine Tile Color & Highlight
-          let fillColor = '#0f172a80';
-          let strokeColor = '#1e293b';
+          let fillColor = 'rgba(15, 23, 42, 0.65)';
+          let strokeColor = 'rgba(245, 158, 11, 0.25)'; // Glowing yellow grid lines
           let lineWidth = 1;
 
-          // Highlight active movement / card target ranges
           const distToPhoenix = Math.abs(gx - activeUnits[0].gx) + Math.abs(gy - activeUnits[0].gy);
           const inMoveRange = distToPhoenix <= 4;
           const inAttackRange = distToPhoenix > 4 && distToPhoenix <= 8;
 
           if (selectedCard) {
             if (distToPhoenix <= 6) {
-              fillColor = 'rgba(6, 182, 212, 0.15)';
+              fillColor = 'rgba(6, 182, 212, 0.2)';
               strokeColor = '#06b6d4';
             }
           } else if (inMoveRange) {
-            fillColor = 'rgba(234, 179, 8, 0.08)';
-            strokeColor = '#eab30840';
+            fillColor = 'rgba(234, 179, 8, 0.12)';
+            strokeColor = 'rgba(234, 179, 8, 0.5)';
           } else if (inAttackRange) {
-            fillColor = 'rgba(168, 85, 247, 0.05)';
-            strokeColor = '#a855f730';
+            fillColor = 'rgba(168, 85, 247, 0.08)';
+            strokeColor = 'rgba(168, 85, 247, 0.4)';
           }
 
           if (isHovered) {
-            fillColor = 'rgba(56, 189, 248, 0.35)';
+            fillColor = 'rgba(56, 189, 248, 0.4)';
             strokeColor = '#38bdf8';
             lineWidth = 2;
           }
 
           if (isSelected) {
-            fillColor = 'rgba(251, 191, 36, 0.4)';
+            fillColor = 'rgba(251, 191, 36, 0.5)';
             strokeColor = '#fbbf24';
             lineWidth = 2.5;
           }
 
-          // Draw Isometric Hex / Diamond Tile
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(pt.x, pt.y - tileH / 2);
@@ -232,7 +241,7 @@ export default function OmniBoard3D({
           ctx.stroke();
           ctx.restore();
 
-          // Render 3D Terrain Features (Mountains, Trees, Relays)
+          // Render 3D Terrain Features (Volumetric Mountains, Forests, Relays)
           if (terrain === 'mountain') {
             draw3DMountain(ctx, pt.x, pt.y, tileW, tileH, zoomLevel);
           } else if (terrain === 'forest') {
@@ -243,10 +252,10 @@ export default function OmniBoard3D({
         }
       }
 
-      // 2. Draw Coordinate Markers (X: A1..O15, Y: A15..O15)
+      // 3. Draw Axis Coordinates (A1..O15, A15..O15)
       drawCoordinateLabels(ctx, gridToIso, GRID_SIZE, tileW, tileH);
 
-      // 3. Draw Tactical Laser Beams & Targeting Vectors
+      // 4. Draw Tactical Vector Laser Beam & Target Badge
       const phoenix = activeUnits.find(u => u.id === 'phoenix');
       const orlis = activeUnits.find(u => u.id === 'orlis');
       if (phoenix && orlis) {
@@ -254,9 +263,10 @@ export default function OmniBoard3D({
         const oPt = gridToIso(orlis.gx, orlis.gy, 25);
 
         drawTacticalLaser(ctx, pPt, oPt, laserPulse, isCpuTurn);
+        drawTargetBadge(ctx, oPt.x, oPt.y - 45 * zoomLevel, 'ORLIS / G8', '-35 HP');
       }
 
-      // 4. Draw 3D Billboarding Units with Holographic Neon Rings & Health Bars
+      // 5. Draw 3D Billboarding Units with Dual-Ring Neon Auras & Vertical Energy Column
       const sortedUnits = [...activeUnits].sort((a, b) => (a.gx + a.gy) - (b.gx + b.gy));
 
       sortedUnits.forEach(unit => {
@@ -266,7 +276,7 @@ export default function OmniBoard3D({
         draw3DUnit(ctx, pt.x, pt.y, unit, isUnitSelected, laserPulse, zoomLevel);
       });
 
-      // 5. Draw Floating Combat Text Popups (-35 DMG, +25 AP)
+      // 6. Draw Floating Combat Text Popups (-35 DMG, +28 AP)
       popups.forEach(popup => {
         const pt = gridToIso(popup.gx, popup.gy, 50 + (1 - popup.life) * 30);
         ctx.save();
@@ -274,13 +284,13 @@ export default function OmniBoard3D({
         ctx.fillStyle = popup.color;
         ctx.textAlign = 'center';
         ctx.shadowColor = popup.color;
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 12;
         ctx.globalAlpha = popup.life;
         ctx.fillText(popup.text, pt.x, pt.y);
         ctx.restore();
       });
 
-      // 6. Draw Target Reticle & Damage Tooltip on Hovered / Selected Unit
+      // 7. Draw Unit Tooltip on Hover
       if (hoveredTile) {
         const unitOnTile = activeUnits.find(u => u.gx === hoveredTile.x && u.gy === hoveredTile.y);
         if (unitOnTile) {
@@ -354,8 +364,10 @@ export default function OmniBoard3D({
   };
 
   const draw3DMountain = (ctx, x, y, tileW, tileH, z) => {
-    const h = 28 * z;
+    const h = 32 * z;
     ctx.save();
+    
+    // Front Face
     ctx.beginPath();
     ctx.moveTo(x, y - tileH / 2 - h);
     ctx.lineTo(x + tileW / 2, y);
@@ -364,6 +376,7 @@ export default function OmniBoard3D({
     ctx.fillStyle = '#1e293b';
     ctx.fill();
 
+    // Side Face (Shadowed)
     ctx.beginPath();
     ctx.moveTo(x, y - tileH / 2 - h);
     ctx.lineTo(x - tileW / 2, y);
@@ -372,10 +385,11 @@ export default function OmniBoard3D({
     ctx.fillStyle = '#0f172a';
     ctx.fill();
 
+    // Specular Ridge Line Highlight
     ctx.beginPath();
     ctx.moveTo(x, y - tileH / 2 - h);
-    ctx.lineTo(x + 4 * z, y - tileH / 2 - h + 8 * z);
-    ctx.lineTo(x - 4 * z, y - tileH / 2 - h + 8 * z);
+    ctx.lineTo(x + 4 * z, y - tileH / 2 - h + 10 * z);
+    ctx.lineTo(x - 4 * z, y - tileH / 2 - h + 10 * z);
     ctx.closePath();
     ctx.fillStyle = '#38bdf880';
     ctx.fill();
@@ -412,7 +426,7 @@ export default function OmniBoard3D({
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(x - 3 * z, y - 30 * z, 6 * z, 30 * z);
 
-    const orbGlow = (8 + Math.sin(pulse * 0.1) * 3) * z;
+    const orbGlow = (9 + Math.sin(pulse * 0.1) * 3) * z;
     const grad = ctx.createRadialGradient(x, y - 34 * z, 1, x, y - 34 * z, orbGlow);
     grad.addColorStop(0, '#e879f9');
     grad.addColorStop(0.6, '#c084fc80');
@@ -427,40 +441,90 @@ export default function OmniBoard3D({
 
   const drawTacticalLaser = (ctx, start, end, pulse, isCpu) => {
     ctx.save();
+    
+    // Core Laser Beam
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     ctx.lineTo(end.x, end.y);
-    ctx.strokeStyle = isCpu ? 'rgba(168, 85, 247, 0.8)' : 'rgba(6, 182, 212, 0.8)';
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = isCpu ? 'rgba(168, 85, 247, 0.9)' : 'rgba(6, 182, 212, 0.9)';
+    ctx.lineWidth = 3;
     ctx.shadowColor = isCpu ? '#a855f7' : '#06b6d4';
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 15;
     ctx.stroke();
 
+    // Pulse Energy Particle
     const progress = (pulse % 50) / 50;
     const px = start.x + (end.x - start.x) * progress;
     const py = start.y + (end.y - start.y) * progress;
 
     ctx.beginPath();
-    ctx.arc(px, py, 4, 0, Math.PI * 2);
-    ctx.fillStyle = isCpu ? '#e879f9' : '#67e8f9';
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.fillStyle = isCpu ? '#f0abfc' : '#67e8f9';
+    ctx.shadowBlur = 20;
     ctx.fill();
+    ctx.restore();
+  };
+
+  const drawTargetBadge = (ctx, x, y, name, text) => {
+    ctx.save();
+    ctx.fillStyle = 'rgba(9, 13, 22, 0.95)';
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.roundRect(x - 45, y - 18, 90, 36, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = '#67e8f9';
+    ctx.textAlign = 'center';
+    ctx.fillText(name, x, y - 6);
+
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillText(text, x, y + 8);
     ctx.restore();
   };
 
   const draw3DUnit = (ctx, x, y, unit, isSelected, pulse, z) => {
     ctx.save();
 
+    // 1. Dual-Ring Neon Base Aura
+    // Outer Aura Ring
     ctx.beginPath();
-    ctx.ellipse(x, y, 22 * z, 12 * z, 0, 0, Math.PI * 2);
-    ctx.fillStyle = unit.color + '25';
+    ctx.ellipse(x, y, 26 * z, 14 * z, 0, 0, Math.PI * 2);
+    ctx.fillStyle = unit.color + '20';
     ctx.fill();
-    ctx.strokeStyle = isSelected ? '#fbbf24' : unit.color;
-    ctx.lineWidth = isSelected ? 3 : 2;
-    ctx.shadowColor = unit.accent;
-    ctx.shadowBlur = isSelected ? 15 : 8;
+    ctx.strokeStyle = unit.color + '80';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    const unitH = 36 * z;
+    // Inner Hexagonal Base Ring
+    ctx.beginPath();
+    ctx.ellipse(x, y, 18 * z, 10 * z, 0, 0, Math.PI * 2);
+    ctx.fillStyle = unit.color + '40';
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#fbbf24' : unit.accent;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.shadowColor = unit.accent;
+    ctx.shadowBlur = isSelected ? 18 : 10;
+    ctx.stroke();
+
+    // 2. Vertical Translucent Energy Column for Orlis Archon / Center Hero
+    if (unit.id === 'orlis') {
+      const grad = ctx.createLinearGradient(x, y - 90 * z, x, y);
+      grad.addColorStop(0, 'rgba(6, 182, 212, 0.4)');
+      grad.addColorStop(0.5, 'rgba(6, 182, 212, 0.15)');
+      grad.addColorStop(1, 'transparent');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 45 * z, 20 * z, 45 * z, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 3. Unit Body Pillar / Billboard Sprite
+    const unitH = 38 * z;
     const bodyY = y - unitH;
 
     const grad = ctx.createLinearGradient(x, bodyY, x, y);
@@ -477,6 +541,7 @@ export default function OmniBoard3D({
     ctx.textBaseline = 'middle';
     ctx.fillText(unit.avatar, x, bodyY + 14 * z);
 
+    // 4. Overhead Status HUD Badge (Health Bar + Level Tag)
     const hudY = bodyY - 14 * z;
 
     ctx.fillStyle = '#0f172aee';
@@ -538,10 +603,10 @@ export default function OmniBoard3D({
   };
 
   return (
-    <div className="relative w-full h-[540px] bg-slate-950 rounded-xl overflow-hidden border border-amber-500/30 shadow-2xl shadow-amber-950/20">
+    <div className="relative w-full h-[540px] bg-slate-950 rounded-xl overflow-hidden border border-amber-500/40 shadow-2xl shadow-amber-950/30">
       
       {/* Top Left Omni-Board Header Tag */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-amber-500/40 shadow-lg">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-amber-500/50 shadow-lg">
         <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
         <span className="text-xs font-mono font-bold tracking-widest text-amber-300">OMNI-BOARD 3D</span>
         <span className="text-[10px] font-mono text-slate-400">| GRID 15x15 (A1-O15)</span>

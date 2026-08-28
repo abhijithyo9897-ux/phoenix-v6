@@ -4,45 +4,56 @@
 
 @layer base {
   body {
-    font-family: 'Inter', sans-serif;
-    background-color: #020617;
-    color: #f8fafc;
-  }
-
-  h1, h2, h3, .font-orbitron {
-    font-family: 'Orbitron', sans-serif;
-  }
-
-  .font-mono {
-    font-family: 'Fira Code', monospace;
+    @apply bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950;
   }
 }
 
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Custom HSL Neon Glow & Glassmorphism Utilities */
+.glow-amber {
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4), inset 0 0 10px rgba(245, 158, 11, 0.2);
 }
 
-::-webkit-scrollbar-track {
-  background: #020617;
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.4), inset 0 0 10px rgba(6, 182, 212, 0.2);
 }
 
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 9999px;
+.glow-purple {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.4), inset 0 0 10px rgba(168, 85, 247, 0.2);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+.glow-magenta {
+  box-shadow: 0 0 20px rgba(217, 70, 239, 0.4), inset 0 0 10px rgba(217, 70, 239, 0.2);
 }
 
-/* Keyframe animations */
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.8; filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.4)); }
-  50% { opacity: 1; filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.8)); }
+.glow-gold {
+  box-shadow: 0 0 25px rgba(251, 191, 36, 0.5), inset 0 0 12px rgba(251, 191, 36, 0.25);
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s infinite ease-in-out;
+.card-hologram {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+/* Custom Neon Text Shadow */
+.text-glow-amber {
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+}
+
+.text-glow-purple {
+  text-shadow: 0 0 8px rgba(168, 85, 247, 0.6);
+}
+
+/* Vertical Energy Column Pulse Animation */
+@keyframes energyPulse {
+  0%, 100% { opacity: 0.3; transform: scaleY(1); }
+  50% { opacity: 0.7; transform: scaleY(1.08); }
+}
+
+.animate-energy-pulse {
+  animation: energyPulse 2s ease-in-out infinite;
 }
