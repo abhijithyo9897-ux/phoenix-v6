@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import OmniBoard3D from './OmniBoard3D';
 import CryptexBox from './HardwareSimulators/CryptexBox';
+import TutorialOverlay from './TutorialOverlay';
+import { CpuAiEngine } from '../engine/CpuAiEngine';
+import { LocalStorageManager } from '../engine/LocalStorageManager';
 import { soundFx } from './SoundController';
 import { 
   Flame, 
@@ -22,16 +25,25 @@ import {
   Anchor,
   HelpCircle,
   Volume2,
-  VolumeX
+  VolumeX,
+  Cpu,
+  BookOpen,
+  UserCheck,
+  Bot
 } from 'lucide-react';
+
+const cpuAi = new CpuAiEngine();
 
 export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
   // Game Cycle State matching reference UI (Turn 14: Cycle 3)
   const [turn, setTurn] = useState(14);
   const [cycle, setCycle] = useState(3);
-  const [activePhase, setActivePhase] = useState('ACTIONS'); // DEPLOY, ACTIONS, PHASE, END_TURN
+  const [activePhase, setActivePhase] = useState('ACTIONS');
+  const [gameMode, setGameMode] = useState('VS_CPU'); // 'VS_CPU' or 'SOLO'
+  const [isCpuTurn, setIsCpuTurn] = useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
-  // Hero Stats State matching reference UI
+  // Hero Stats State
   const [heroStats, setHeroStats] = useState({
     name: 'PHOENIX RISING',
     status: 110,
@@ -43,12 +55,108 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
     level: 12
   });
 
-  // Selected Card from Holographic 7-Force Card Hand
+  // Units State on 3D Omni-Board
+  const [units, setUnits] = useState([
+    { 
+      id: 'phoenix', 
+      name: 'PHOENIX RISING', 
+      gx: 0, 
+      gy: 14, // A15
+      color: '#f97316', 
+      accent: '#fbbf24', 
+      hp: 88, 
+      maxHp: 100, 
+      level: 12, 
+      role: 'Hero Champion',
+      avatar: '🔥'
+    },
+    { 
+      id: 'orlis', 
+      name: 'ORLIS ARCHON', 
+      gx: 7, 
+      gy: 7, // G8
+      color: '#06b6d4', 
+      accent: '#67e8f9', 
+      hp: 72, 
+      maxHp: 100, 
+      level: 'O-10', 
+      role: 'Aether Archon',
+      avatar: '🛡️'
+    },
+    { 
+      id: 'void1', 
+      name: 'VOID REAPER', 
+      gx: 11, 
+      gy: 3, // O4
+      color: '#a855f7', 
+      accent: '#e879f9', 
+      hp: 110, 
+      maxHp: 120, 
+      level: 15, 
+      role: 'Void Vanguard',
+      avatar: '👾'
+    },
+    { 
+      id: 'void2', 
+      name: 'VOID TITAN', 
+      gx: 13, 
+      gy: 1, // O14
+      color: '#c084fc', 
+      accent: '#f0abfc', 
+      hp: 95, 
+      maxHp: 100, 
+      level: 14, 
+      role: 'Heavy Titan',
+      avatar: '🤖'
+    },
+    { 
+      id: 'mech1', 
+      name: 'AETHER MECH', 
+      gx: 4, 
+      gy: 6, // D6/G7
+      color: '#38bdf8', 
+      accent: '#7dd3fc', 
+      hp: 60, 
+      maxHp: 80, 
+      level: 8, 
+      role: 'Support Mech',
+      avatar: '⚡'
+    }
+  ]);
+
+  // Selected Card & Action Log
   const [selectedCard, setSelectedCard] = useState(null);
   const [activeAbility, setActiveAbility] = useState(null);
   const [actionLog, setActionLog] = useState('TURN 14 STARTED: ACTIONS PHASE ACTIVE');
+  const [floatingFx, setFloatingFx] = useState(null);
 
-  // Holographic 7-Force Card Hand Data (Matching exact screenshot cards)
+  // Load saved state from LocalStorage on mount
+  useEffect(() => {
+    const saved = LocalStorageManager.loadGameState();
+    if (saved) {
+      if (saved.turn) setTurn(saved.turn);
+      if (saved.cycle) setCycle(saved.cycle);
+      if (saved.activePhase) setActivePhase(saved.activePhase);
+      if (saved.heroStats) setHeroStats(saved.heroStats);
+      if (saved.units) setUnits(saved.units);
+      if (saved.gameMode) setGameMode(saved.gameMode);
+    }
+  }, []);
+
+  // Auto-save state to LocalStorage on updates
+  useEffect(() => {
+    LocalStorageManager.saveGameState({
+      turn,
+      cycle,
+      activePhase,
+      heroStats,
+      units,
+      actionLog,
+      gameMode
+    });
+  }, [turn, cycle, activePhase, heroStats, units, actionLog, gameMode]);
+
+  // Holographic 7-Force Card Hand Data
   const HOLOGRAPHIC_CARDS = [
     {
       id: 'phanta',
@@ -122,7 +230,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
     }
   ];
 
-  // Abilities List (Row 1 Hexagons & Row 2 Squares)
   const HEX_ABILITIES = [
     { id: 'ab1', name: 'Aegis Shield', icon: Shield, color: 'text-amber-400 border-amber-500/50 bg-amber-950/40' },
     { id: 'ab2', name: 'Pulse Wave', icon: Activity, color: 'text-cyan-400 border-cyan-500/50 bg-cyan-950/40' },
@@ -140,7 +247,7 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
     { id: 'sq5', name: 'Crosshair Aim', icon: Crosshair }
   ];
 
-  // Handle Card Play Execution
+  // Handle Player Card Selection
   const handleCardClick = (card) => {
     if (soundEnabled) soundFx.playClick();
 
@@ -153,14 +260,25 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
     }
   };
 
-  // Handle Tile Selection on 3D Omni-Board
+  // Handle Player Tile Selection & Attack Execution
   const handleTileSelect = (tile) => {
     if (selectedCard) {
       if (soundEnabled) soundFx.playCompileSuccess();
 
-      setActionLog(`EXECUTED [${selectedCard.name}] ON TILE (${tile.x}, ${tile.y}). CONSUMED ${selectedCard.costEnergy}⚡`);
+      const targetUnit = units.find(u => u.gx === tile.x && u.gy === tile.y) || units[1];
+      const dmg = selectedCard.costEnergy || 35;
+
+      // Update target unit HP
+      setUnits(prev => prev.map(u => u.id === targetUnit.id ? { ...u, hp: Math.max(0, u.hp - dmg) } : u));
       
-      // Update Hero Resources
+      setFloatingFx({
+        target: targetUnit.id,
+        text: `-${dmg} KINETIC!`,
+        color: '#38bdf8'
+      });
+
+      setActionLog(`EXECUTED [${selectedCard.name}] ON (${tile.x}, ${tile.y}). DEALT -${dmg} KINETIC DAMAGE!`);
+      
       setHeroStats(prev => ({
         ...prev,
         resource: Math.max(0, prev.resource - 5),
@@ -168,9 +286,27 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
       }));
 
       setSelectedCard(null);
-
       if (onObjectiveComplete) onObjectiveComplete('obj-paninian-lifo-combo');
+    } else {
+      // Player movement
+      setUnits(prev => prev.map(u => u.id === 'phoenix' ? { ...u, gx: tile.x, gy: tile.y } : u));
+      setActionLog(`PHOENIX RISING MOVED TO COORDINATES (${tile.x}, ${tile.y})`);
     }
+  };
+
+  // Handle Triggering CPU Turn
+  const triggerCpuTurn = () => {
+    setIsCpuTurn(true);
+    setActionLog('CHITRAGUPTA AI: THINKING & EVALUATING TACTICAL POSITIONS...');
+
+    setTimeout(() => {
+      const res = cpuAi.executeTurn(units, heroStats, {});
+      setUnits(res.units);
+      setHeroStats(res.playerStats);
+      setFloatingFx(res.floatingFx);
+      setActionLog(res.logs[res.logs.length - 1] || 'CPU TURN RESOLVED.');
+      setIsCpuTurn(false);
+    }, 1200);
   };
 
   // Handle End Turn
@@ -184,17 +320,29 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
       setCycle(prev => prev + 1);
     }
 
-    setActionLog(`TURN ${turn} CYCLE ${cycle}: TURN ENDED. RECHARGED +15 RESOURCE.`);
     setHeroStats(prev => ({ ...prev, resource: Math.min(100, prev.resource + 15) }));
+
+    if (gameMode === 'VS_CPU') {
+      triggerCpuTurn();
+    } else {
+      setActionLog(`TURN ${turn} CYCLE ${cycle}: TURN ENDED. RECHARGED +15 RESOURCE.`);
+    }
   };
 
   return (
     <div className="flex flex-col gap-4 text-slate-100 font-sans pb-10">
       
+      {/* Tutorial Overlay Modal */}
+      <TutorialOverlay 
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+        onStartPractice={() => setGameMode('VS_CPU')}
+      />
+
       {/* ==================== TOP SYSTEM HEADER HUD ==================== */}
       <header className="flex flex-wrap items-center justify-between bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-2xl border border-amber-500/30 shadow-xl shadow-amber-950/20">
         
-        {/* Left: Phoenix Sovereign Reality Logo & Sub-Nav */}
+        {/* Left: Phoenix Sovereign Reality Logo & Mode Controls */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 shadow-lg shadow-amber-500/30 text-slate-950">
@@ -206,17 +354,31 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
             </div>
           </div>
 
-          {/* Hex Sub-Nav Icons */}
-          <div className="hidden sm:flex items-center gap-1.5 ml-4 pl-4 border-l border-slate-800">
-            {['hex1', 'hex2', 'hex3', 'hex4', 'hex5'].map((h, i) => (
-              <button key={h} className="w-7 h-7 rounded-lg bg-slate-800/80 hover:bg-amber-500/20 border border-slate-700 hover:border-amber-500/50 flex items-center justify-center text-xs text-slate-400 hover:text-amber-300 transition-all">
-                ❖
-              </button>
-            ))}
+          {/* Tutorial & Mode Buttons */}
+          <div className="flex items-center gap-2 border-l border-slate-800 pl-4">
+            <button
+              onClick={() => setIsTutorialOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/50 hover:bg-amber-500/30 text-amber-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-amber-500/20"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>INSTRUCTIONS</span>
+            </button>
+
+            <button
+              onClick={() => setGameMode(prev => prev === 'VS_CPU' ? 'SOLO' : 'VS_CPU')}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
+                gameMode === 'VS_CPU' 
+                  ? 'bg-purple-500/20 border-purple-500/60 text-purple-300 shadow-sm shadow-purple-500/20' 
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}
+            >
+              {gameMode === 'VS_CPU' ? <Bot className="w-3.5 h-3.5 text-purple-400" /> : <UserCheck className="w-3.5 h-3.5" />}
+              <span>{gameMode === 'VS_CPU' ? 'VS CPU AI' : 'SOLO MODE'}</span>
+            </button>
           </div>
         </div>
 
-        {/* Center: Turn & Cycle Counter with Hex Status Nodes */}
+        {/* Center: Turn & Cycle Counter */}
         <div className="flex items-center gap-4 bg-slate-950/80 px-5 py-2 rounded-xl border border-amber-500/40">
           <div className="text-center">
             <span className="text-[11px] font-mono text-slate-400 tracking-widest block">TURN 14: CYCLE {cycle}</span>
@@ -281,19 +443,16 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
 
             {/* Numeric Bars: Vitality, Kinetic, Arcane, Level */}
             <div className="flex flex-col gap-2 font-mono text-xs">
-              
-              {/* Vitality (88) */}
               <div>
                 <div className="flex justify-between text-[11px] mb-1 text-amber-300">
                   <span>VITALITY</span>
-                  <span className="font-bold">88</span>
+                  <span className="font-bold">{heroStats.vitality}</span>
                 </div>
                 <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-amber-500/30">
-                  <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full" style={{ width: '88%' }}></div>
+                  <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-500" style={{ width: `${heroStats.vitality}%` }}></div>
                 </div>
               </div>
 
-              {/* Kinetic (72) */}
               <div>
                 <div className="flex justify-between text-[11px] mb-1 text-cyan-300">
                   <span>KINETIC</span>
@@ -304,7 +463,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
                 </div>
               </div>
 
-              {/* Arcane (95) */}
               <div>
                 <div className="flex justify-between text-[11px] mb-1 text-purple-300">
                   <span>ARCANE</span>
@@ -315,7 +473,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
                 </div>
               </div>
 
-              {/* Level (12) */}
               <div>
                 <div className="flex justify-between text-[11px] mb-1 text-sky-300">
                   <span>LEVEL</span>
@@ -331,7 +488,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
             <div className="mt-2 pt-2 border-t border-slate-800">
               <span className="text-[10px] font-mono text-slate-400 tracking-widest uppercase block mb-2">ABILITIES</span>
               
-              {/* Row 1: 6 Hexagonal Ability Buttons */}
               <div className="grid grid-cols-6 gap-1 mb-2">
                 {HEX_ABILITIES.map((ab) => {
                   const Icon = ab.icon;
@@ -352,7 +508,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
                 })}
               </div>
 
-              {/* Row 2: 5 Square Ability Icons */}
               <div className="grid grid-cols-5 gap-1">
                 {SQUARE_ABILITIES.map((sq) => {
                   const Icon = sq.icon;
@@ -391,12 +546,10 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">PREVIEW</span>
             </div>
 
-            {/* Embedded 3D Sci-Fi Box Preview */}
             <div className="h-32 rounded-xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center relative">
               <CryptexBox soundEnabled={soundEnabled} compact={true} />
             </div>
 
-            {/* Status & Cycles Readouts */}
             <div className="flex items-center justify-between text-xs font-mono px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800">
               <span className="text-slate-400">STATUS: <strong className="text-emerald-400">ACTIVE</strong></span>
               <span className="text-slate-400">CYCLES: <strong className="text-slate-200">142</strong></span>
@@ -407,30 +560,30 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
         {/* ==================== CENTER COLUMN (3D OMNI-BOARD ARENA + PHASE BAR) ==================== */}
         <div className="lg:col-span-9 flex flex-col gap-4">
           
-          {/* Interactive 3D Omni-Board Canvas */}
           <OmniBoard3D 
             selectedCard={selectedCard}
             onTileSelect={handleTileSelect}
             activePhase={activePhase}
             heroStats={heroStats}
-            onHeroStatsChange={setHeroStats}
+            units={units}
+            floatingFx={floatingFx}
+            isCpuTurn={isCpuTurn}
           />
 
           {/* Action Log Status Bar */}
           <div className="flex items-center justify-between bg-slate-900/80 px-4 py-2 rounded-xl border border-slate-800 text-xs font-mono">
             <div className="flex items-center gap-2 text-cyan-400">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              <span className={`w-2 h-2 rounded-full ${isCpuTurn ? 'bg-purple-400' : 'bg-cyan-400'} animate-ping`}></span>
               <span className="font-bold truncate">{actionLog}</span>
             </div>
             <div className="text-[10px] text-slate-500 font-mono">
-              COMMAND BUFFER: SYNCHRONIZED
+              SAVED: LOCALSTORAGE • CHITRAGUPTA AI ONLINE
             </div>
           </div>
 
           {/* Phase Control Buttons Bar */}
           <div className="flex items-center justify-center gap-3 bg-slate-900/90 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-xl">
             
-            {/* Deploy Pill */}
             <button
               onClick={() => {
                 if (soundEnabled) soundFx.playClick();
@@ -446,7 +599,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
               DEPLOY
             </button>
 
-            {/* Actions Pill (Active State) */}
             <button
               onClick={() => {
                 if (soundEnabled) soundFx.playClick();
@@ -462,7 +614,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
               ACTIONS
             </button>
 
-            {/* Phase Pill */}
             <button
               onClick={() => {
                 if (soundEnabled) soundFx.playClick();
@@ -478,7 +629,16 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
               PHASE
             </button>
 
-            {/* End Turn Pill (Gold Accent) */}
+            {gameMode === 'VS_CPU' && (
+              <button
+                onClick={triggerCpuTurn}
+                disabled={isCpuTurn}
+                className="px-5 py-2 rounded-xl font-mono text-xs font-bold tracking-widest bg-purple-600 hover:bg-purple-500 text-slate-100 shadow-lg shadow-purple-600/30 transition-all flex items-center gap-1.5"
+              >
+                <Bot className="w-3.5 h-3.5" /> CPU TURN
+              </button>
+            )}
+
             <button
               onClick={handleEndTurn}
               className="px-6 py-2 rounded-xl font-mono text-xs font-bold tracking-widest bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/30 transition-all active:scale-95"
@@ -492,7 +652,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
       {/* ==================== BOTTOM DOCK: HOLOGRAPHIC 7-FORCE CARD HAND ==================== */}
       <div className="bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl border border-amber-500/40 shadow-2xl flex flex-col gap-3">
         
-        {/* Header Title */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-400" />
@@ -508,7 +667,6 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
           </span>
         </div>
 
-        {/* 7 Glowing Holographic Cards Deck */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
           {HOLOGRAPHIC_CARDS.map((card) => {
             const isSelected = selectedCard?.id === card.id;
@@ -523,25 +681,21 @@ export default function FlagshipArena({ soundEnabled, onObjectiveComplete }) {
                     : 'hover:scale-102 hover:-translate-y-1'
                 }`}
               >
-                {/* Top Card Name & Icon */}
                 <div className="flex items-center justify-between border-b border-current/20 pb-1.5">
                   <span className="text-xs font-mono font-black tracking-wider">{card.name}</span>
                   <span className="text-base">{card.icon}</span>
                 </div>
 
-                {/* Card Emblem / Graphic Motif */}
                 <div className="my-auto text-center py-2">
                   <div className="w-10 h-10 mx-auto rounded-full border border-current/30 flex items-center justify-center text-xl bg-slate-950/40 group-hover:scale-110 transition-transform">
                     {card.icon}
                   </div>
                 </div>
 
-                {/* Card Description */}
                 <p className="text-[9px] leading-tight font-sans text-slate-300/80 my-1 line-clamp-3">
                   {card.desc}
                 </p>
 
-                {/* Card Costs (Energy ⚡ / Water 💧) */}
                 <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-current/20">
                   <span className="font-bold">{card.costEnergy} ⚡</span>
                   <span className="font-bold">{card.costWater} 💧</span>
